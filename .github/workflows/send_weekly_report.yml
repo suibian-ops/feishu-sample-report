@@ -1,0 +1,53 @@
+name: Sync & Send Report to Feishu
+
+on:
+  schedule:
+    - cron: '37 1 * * 1'
+    - cron: '17 13 28-31 * *'
+  workflow_dispatch:
+    inputs:
+      report_mode:
+        description: '报告模式 (weekly / monthly)'
+        required: false
+        default: 'weekly'
+
+jobs:
+  sync-and-send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Step 1 — 同步飞书多维表数据
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          OUTPUT_PATH: sample_production.json
+        run: python sync_sample_production.py
+
+      - name: Determine report mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ github.event.inputs.report_mode }}" >> $GITHUB_OUTPUT
+          else
+            TODAY=$(TZ='Asia/Shanghai' date +%d)
+            DAYS_IN_MONTH=$(TZ='Asia/Shanghai' date -d "$(TZ='Asia/Shanghai' date +%Y-%m-01) +1 month -1 day" +%d)
+            if [ "$TODAY" = "$DAYS_IN_MONTH" ]; then
+              echo "mode=monthly" >> $GITHUB_OUTPUT
+            else
+              echo "mode=weekly" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Step 2 — 生成报告并推送飞书
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          REPORT_MODE: ${{ steps.mode.outputs.mode }}
+          DATA_FILE: sample_production.json
+        run: python send_weekly_report.py
