@@ -1,59 +1,50 @@
-name: Sync & Send Report to Feishu
+name: 样稿周报推送
 
 on:
-  # 每周一北京时间 09:00（UTC 周一 01:00）→ 发周报
+  # 每周一 北京时间 10:05（UTC 02:05）
+  # 避开整点，减少 GitHub 排队延迟
   schedule:
-    - cron: '0 1 * * 1'
-    # 每月末北京时间 21:00（UTC 13:00）→ 发月报
-    # cron 不能直接表示"月末"，用 28-31 号各跑一次，脚本内判断
-    - cron: '0 13 28-31 * *'
-  # 手动触发（可选择模式）
+    - cron: '5 2 * * 1'
+  # 支持手动触发（调试用）
   workflow_dispatch:
-    inputs:
-      report_mode:
-        description: '报告模式 (weekly / monthly)'
-        required: false
-        default: 'weekly'
 
 jobs:
   sync-and-send:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout code
+      - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: 配置 Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Step 1 — 同步飞书多维表数据
+      - name: 同步飞书多维表数据
         env:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           OUTPUT_PATH: sample_production.json
         run: python sync_sample_production.py
 
-      - name: Determine report mode
-        id: mode
-        run: |
-          # 如果是手动触发，使用输入值
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "mode=${{ github.event.inputs.report_mode }}" >> $GITHUB_OUTPUT
-          # 如果是 cron 触发，判断今天是否是月末
-          else
-            TODAY=$(TZ='Asia/Shanghai' date +%d)
-            DAYS_IN_MONTH=$(TZ='Asia/Shanghai' date -d "$(TZ='Asia/Shanghai' date +%Y-%m-01) +1 month -1 day" +%d)
-            if [ "$TODAY" = "$DAYS_IN_MONTH" ]; then
-              echo "mode=monthly" >> $GITHUB_OUTPUT
-            else
-              echo "mode=weekly" >> $GITHUB_OUTPUT
-            fi
-          fi
-
-      - name: Step 2 — 生成报告并推送飞书
+      - name: 推送周报到飞书群
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
-          REPORT_MODE: ${{ steps.mode.outputs.mode }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           DATA_FILE: sample_production.json
         run: python send_weekly_report.py
+
+      - name: 回写数据文件（供网页展示）
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sample_production.json
+          if git diff --staged --quiet; then
+            echo "数据无变化，跳过提交"
+          else
+            git commit -m "chore: 更新样稿数据 $(TZ='Asia/Shanghai' date +%Y-%m-%d)"
+            git push
+          fi
