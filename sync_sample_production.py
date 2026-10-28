@@ -3,6 +3,10 @@
 样稿制作记录同步脚本
 从飞书多维表拉取数据，输出 sample_production.json
 """
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 import os
 import json
 import urllib.request
@@ -23,6 +27,7 @@ FIELD_MAP = {
     "交付时间": "deliverDate",
     "样稿数量": "sampleCount",
     "商家": "merchant",
+    "制作类型": "mtype",
     "系列|科目": "series",
     "制作月份": "productionMonth",
     "要求沉淀时间": "沉淀日期",
